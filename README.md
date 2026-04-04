@@ -21,10 +21,10 @@ You will need **uv** installed on your machine. It is a fast Python package and 
    uv run main.py
    ```
 
-## Project Structure
+### Project Structure
 
-`baseline.py:` Standard scan implementation.
-`bitmap_index.py:` Implementation of bitmap-based acceleration.
-`zone_map_skipping.py:` Implementation of zone maps for block skipping.
-`generate_db.py:` Script to generate synthetic_data.csv.
-`pyproject.toml:` Project metadata and dependencies.
+- `baseline.py:` Standard scan implementation.
+- `bitmap_index.py:` Implementation of bitmap-based acceleration.
+- `zone_map_skipping.py:` Implementation of zone maps for block skipping.
+- `generate_db.py:` Script to generate synthetic_data.csv.
+- `pyproject.toml:` Project metadata and dependencies.

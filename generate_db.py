@@ -12,8 +12,7 @@ def generate_data(num_rows=1_000_000):
         np.random.randint(1000, 5000, num_outliers)
     ])
     assert len(sensor_data) == num_rows
-
-    print(f"Sensor data: {sensor_data}")
+    print(f"sensor_reading: {num_normal} values in [10,20), {num_outliers} outliers in [1000,5000)")
     
     data = {
         # 1. Low-cardinality (for Bitmap Index)

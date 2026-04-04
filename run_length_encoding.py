@@ -7,11 +7,12 @@ class RunLengthEncoding:
 
     def run_len_encoding(self):
         compressed_data = []
-        
+
         for segment in self.storage:
             data = segment["data"]
             if len(data) == 0:
                 continue
+            base_row = int(segment.get("base_row", 0))
 
             first_occurrence = data.iloc[0]
             start_index = 0
@@ -20,22 +21,31 @@ class RunLengthEncoding:
                 if data.iloc[i] == first_occurrence:
                     run_length += 1
                 else:
-                    compressed_data.append((first_occurrence, start_index, run_length))
+                    compressed_data.append(
+                        (first_occurrence, base_row + start_index, run_length)
+                    )
                     first_occurrence = data.iloc[i]
                     start_index = i
                     run_length = 1
-            
-            compressed_data.append((first_occurrence, start_index, run_length))
-                
+
+            compressed_data.append(
+                (first_occurrence, base_row + start_index, run_length)
+            )
+
         return compressed_data
 
     def direct_count(self, value):
         start_time = time.time()
-        total_count = sum(run_len for val, start, run_len in self.compressed_data if val == value)
+        total_count = sum(
+            run_len for val, _start, run_len in self.compressed_data if val == value
+        )
         end_time = time.time()
+        # Rough storage: tuples of (value ref, global start, length) — ~24 bytes per run + value
+        approx_bytes = len(self.compressed_data) * 24
         return {
             "total_count": total_count,
             "metrics": {
                 "query_time": end_time - start_time,
-            }
+                "approx_compressed_bytes": approx_bytes,
+            },
         }

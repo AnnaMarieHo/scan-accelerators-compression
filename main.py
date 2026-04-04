@@ -56,10 +56,10 @@ class MiniColumnStore:
     def query(self, column_name, value, operator):
         # 2. Run a Baseline Scan (The 'Oracle')
         baseline_result = Baseline(self.storage[column_name]).baseline_scan(value, operator)
+        matching_data = baseline_result['values']
         print("--------------------------------")
         print("Baseline Scan Results:")
         print("--------------------------------")
-        # print(f"Query Values Count: {sum(baseline_result['values'])}")
         print(f"Query Bitset Count: {sum(baseline_result['bitset'])}")
         print(f"Query Time: {baseline_result['metrics']['query_time']}")
         print(f"Skip Ratio: {baseline_result['metrics']['skip_ratio']}")
@@ -68,10 +68,10 @@ class MiniColumnStore:
         # 3. Run the Accelerated Scans and compare
         # ZONE MAP SKIPPING
         zone_map_result = ZoneMapSkipping(self.storage[column_name]).zone_map_skipping(value, operator)
+        matching_data = zone_map_result['values']
         print("--------------------------------")
         print("Zone Map Skipping Results:")
         print("--------------------------------")
-        # print(f"Query Values Count: {sum(zone_map_result['values'])}")
         print(f"Query Bitset Count: {sum(zone_map_result['bitset'])}")
         print(f"Query Time: {zone_map_result['metrics']['query_time']}")
         print(f"Skip Ratio: {zone_map_result['metrics']['skip_ratio']}")
@@ -79,7 +79,11 @@ class MiniColumnStore:
         
         # BITMAP INDEX
         if column_name in self.bitmap_indicies:
-            bitmap_index_result = BitmapIndex(self.bitmap_indicies[column_name]).bitmap_index_scan(value)
+            bitmap_index_result = BitmapIndex(
+                self.bitmap_indicies[column_name],
+                self.columns[column_name].to_numpy(),
+            ).bitmap_index_scan(value)
+            matching_data = bitmap_index_result['values']
             print("--------------------------------")
             print("Bitmap Index Results:")
             print("--------------------------------")

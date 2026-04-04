@@ -14,8 +14,10 @@ class Baseline:
 
         for segment in self.storage:
             match = predicate_evaluator.evaluate_predicate(segment["data"], value, operator)
-            final_bitset.extend(match)
-            actual_values.extend(match)
+            match = np.asarray(match, dtype=bool)
+            final_bitset.extend(match.tolist())
+            actual_values.extend(segment["data"][match].tolist())
+
         end_time = time.time()
 
         return {
@@ -23,7 +25,8 @@ class Baseline:
             "bitset": np.array(final_bitset),
             "metrics": {
                 "query_time": end_time - start_time,
-                "skip_ratio": segments_skipped / total_segments,
-                "segments_skipped": segments_skipped,
+                "segments_scanned": len(self.storage),
+                "skip_ratio": 0.0,
+                "segments_skipped": 0,
             }
         }

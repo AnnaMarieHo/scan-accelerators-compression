@@ -41,10 +41,14 @@ class ZoneMapSkipping:
                 segments_skipped += 1
                 final_bitset.extend([False] * segment["count"])
             else:
-                match = predicate_evaluator.evaluate_predicate(segment["data"], value, operator)
-                final_bitset.extend(match)
-                actual_values.extend(match)
-            end_time = time.time()
+                match = np.asarray(
+                    predicate_evaluator.evaluate_predicate(segment["data"], value, operator),
+                    dtype=bool,
+                )
+                final_bitset.extend(match.tolist())
+                actual_values.extend(segment["data"][match].tolist())
+
+        end_time = time.time()
 
         return {
             "values": actual_values,

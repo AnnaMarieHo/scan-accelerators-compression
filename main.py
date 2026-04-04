@@ -7,6 +7,7 @@ import sys
 from zone_map_skipping import ZoneMapSkipping
 from baseline import Baseline
 from bitmap_index import BitmapIndex
+from run_length_encoding import RunLengthEncoding
 
 class MiniColumnStore:
     def __init__(self, csv_path, segment_size=1024):
@@ -54,7 +55,9 @@ class MiniColumnStore:
 
 
     def query(self, column_name, value, operator):
+        #------------------------------------------
         # 2. Run a Baseline Scan (The 'Oracle')
+        #------------------------------------------
         baseline_result = Baseline(self.storage[column_name]).baseline_scan(value, operator)
         matching_data = baseline_result['values']
         print("--------------------------------")
@@ -65,7 +68,9 @@ class MiniColumnStore:
         print(f"Skip Ratio: {baseline_result['metrics']['skip_ratio']}")
         print(f"Segments Skipped: {baseline_result['metrics']['segments_skipped']}")
         
+        #------------------------------------------
         # 3. Run the Accelerated Scans and compare
+        #------------------------------------------
         # ZONE MAP SKIPPING
         zone_map_result = ZoneMapSkipping(self.storage[column_name]).zone_map_skipping(value, operator)
         matching_data = zone_map_result['values']
@@ -77,6 +82,7 @@ class MiniColumnStore:
         print(f"Skip Ratio: {zone_map_result['metrics']['skip_ratio']}")
         print(f"Segments Skipped: {zone_map_result['metrics']['segments_skipped']}")
         
+
         # BITMAP INDEX
         if column_name in self.bitmap_indicies:
             bitmap_index_result = BitmapIndex(
@@ -89,9 +95,18 @@ class MiniColumnStore:
             print("--------------------------------")
             print(f"Query Bitset Count: {sum(bitmap_index_result['bitset'])}")
             print(f"Query Time: {bitmap_index_result['metrics']['query_time']}")
-            return baseline_result, zone_map_result, bitmap_index_result
-        else:
-            return baseline_result, zone_map_result, None
+
+
+        # RLE COMPRESSION
+        rle_result = RunLengthEncoding(self.storage[column_name]).direct_count(value)
+        print("--------------------------------")
+        print("RLE Results:")
+        print("--------------------------------")
+        print("Direct COUNT on runs without decompressing: ", rle_result['total_count'])
+        print("Query Time: ", rle_result['metrics']['query_time'])
+
+
+
 
 
 def main():
@@ -108,7 +123,7 @@ def main():
     ]
 
     for col, val, op in queries:
-        baseline_result, zone_map_result, bitmap_index_result = store.query(col, val, op)
+        store.query(col, val, op)
         
 
 if __name__ == "__main__":

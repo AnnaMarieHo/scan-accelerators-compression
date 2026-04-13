@@ -10,7 +10,9 @@ from dictionary_encoding import DictionaryEncoding
 from metrics import summarize_column_storage
 from run_length_encoding import RunLengthEncoding
 from zone_map_skipping import ZoneMapSkipping
-
+from bit_slicing import BitSlicing
+from bitweaving import BitWeaving
+from column_imprints import ColumnImprints
 
 class MiniColumnStore:
     def __init__(self, csv_path, segment_size=1024):
@@ -177,6 +179,64 @@ class MiniColumnStore:
                     f"  vs baseline set diff: {len(base_ids.symmetric_difference(delta_ids))} "
                     "(should be 0 for =)"
                 )
+            # --- Bit-slicing: only for integer numeric columns ---
+            try:
+                if pd.api.types.is_integer_dtype(first_dtype):
+                    bs = BitSlicing(segs)
+                    if operator in ("<", "<=", "BETWEEN"):
+                        bs_result = bs.query(value, operator)
+                        bmask = bs_result["bitset"]
+                        print("--- Bit-slicing ---")
+                        print(f"  Matches:            {int(bmask.sum())}")
+                        print(f"  Query time:         {bs_result['metrics']['query_time']:.6f}s")
+                        print(f"  Bytes for slices:   {bs_result['metrics'].get('bytes_for_slices', 'n/a')}")
+                        # compare to baseline if shapes match
+                        if baseline_result["bitset"].shape == bmask.shape:
+                            print(f"  vs baseline mismatches: {int(np.sum(baseline_result['bitset'] != bmask))}")
+                        else:
+                            print("  WARN: bitset length mismatch (bit-slicing)")
+                    else:
+                        print("--- Bit-slicing: operator not supported (supported: <, <=, BETWEEN) ---")     
+            except Exception as e:
+                print(f"--- Bit-slicing failed: {e} ---")  
+ # --- BitWeaving-lite: vertical packed bit-planes (word-level) ---
+            try:
+                if pd.api.types.is_integer_dtype(first_dtype):
+                    bw = BitWeaving(segs)
+                    if operator in ("<", "<=", "BETWEEN", "=", "!=", ">", ">="):
+                        bw_result = bw.query(value, operator)
+                        bw_mask = bw_result["bitset"]
+                        print("--- BitWeaving (vertical) ---")
+                        print(f"  Matches:            {int(bw_mask.sum())}")
+                        print(f"  Query time:         {bw_result['metrics']['query_time']:.6f}s")
+                        print(f"  Bytes for words:    {bw_result['metrics'].get('bytes_for_words', 'n/a')}")
+                        if baseline_result["bitset"].shape == bw_mask.shape:
+                            print(f"  vs baseline mismatches: {int(np.sum(baseline_result['bitset'] != bw_mask))}")
+                        else:
+                            print("  WARN: bitset length mismatch (bitweaving)")
+                    else:
+                        print("--- BitWeaving: operator not supported (supported: <, <=, BETWEEN) ---")
+            except Exception as e:
+                print(f"--- BitWeaving failed: {e} ---") 
+                        # --- Column Imprints: segment-level pruning via range-bit imprints ---
+            try:
+                ci = ColumnImprints(segs)
+                ci_result = ci.query(value, operator)
+                ci_ids = set(ci_result["matching_row_ids"])
+                print("--- Column Imprints (segment pruning) ---")
+                print(f"  Matches:            {len(ci_ids)}")
+                print(f"  Query time:         {ci_result['metrics']['query_time']:.6f}s")
+                print(f"  Segments examined:  {ci_result['metrics']['segments_examined']}")
+                print(f"  Segments pruned:    {ci_result['metrics']['segments_pruned']}")
+                print(f"  Bytes for imprints: {ci_result['metrics']['bytes_for_imprints']}")
+                # compare to baseline (no false negatives allowed)
+                base_ids = set(baseline_result["row_ids"])
+                false_negs = len(base_ids - ci_ids)
+                false_pos = len(ci_ids - base_ids)
+                print(f"  False negatives:    {false_negs} (should be 0)")
+                print(f"  False positives:    {false_pos}")
+            except Exception as e:
+                print(f"--- Column Imprints failed: {e} ---")
         else:
             print("--- Delta + bit packing: skipped (non-numeric) ---")
 

@@ -478,13 +478,13 @@ class ExperimentRunner:
         baseline_time = time.perf_counter() - t0
         
         baseline_count = int(combined_mask.sum())
+        segs1_bytes = sum(seg["data"].nbytes for seg in segs1)
+        segs2_bytes = sum(seg["data"].nbytes for seg in segs2)
+        
         result["baseline_count"] = baseline_count
         result["baseline_time"] = baseline_time
         result["baseline_build_time"] = 0.0
-        result["baseline_bytes"] = (
-            baseline1["metrics"].get("bytes_scanned", self.n_rows * 8) +
-            baseline2["metrics"].get("bytes_scanned", self.n_rows * 8)
-        ) / 2
+        result["baseline_bytes"] = (segs1_bytes + segs2_bytes) / 2
         result["selectivity"] = baseline_count / self.n_rows if self.n_rows > 0 else 0
         
         # Zone map: AND of both zone map results
@@ -569,11 +569,12 @@ class ExperimentRunner:
             agg_result = None
         
         baseline_time = time.perf_counter() - t0
+        segs_bytes = sum(seg["data"].nbytes for seg in segs)
         
         result["baseline_count"] = int(mask.sum())
         result["baseline_time"] = baseline_time
         result["baseline_build_time"] = 0.0
-        result["baseline_bytes"] = baseline["metrics"].get("bytes_scanned", self.n_rows * 8)
+        result["baseline_bytes"] = segs_bytes
         result["baseline_agg_result"] = float(agg_result) if agg_result is not None else None
         result["selectivity"] = int(mask.sum()) / self.n_rows if self.n_rows > 0 else 0
         
@@ -615,6 +616,7 @@ class ExperimentRunner:
                 
                 result["rle_agg_result"] = rle_result["total_count"]
                 result["rle_time"] = rle_time
+                result["rle_build_time"] = 0.0
                 result["rle_bytes"] = rle_result["metrics"].get("approx_compressed_bytes", 0)
                 result["rle_speedup"] = baseline_time / rle_time if rle_time > 0 else 0
             except Exception as e:
@@ -639,6 +641,7 @@ class ExperimentRunner:
             
             de_time = time.perf_counter() - t0
             result["dict_time"] = de_time
+            result["dict_build_time"] = 0.0
             result["dict_agg_result"] = float(de_agg) if de_agg is not None else None
         except Exception as e:
             result["dict_error"] = str(e)

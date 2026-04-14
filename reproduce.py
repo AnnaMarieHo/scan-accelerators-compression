@@ -480,6 +480,11 @@ class ExperimentRunner:
         baseline_count = int(combined_mask.sum())
         result["baseline_count"] = baseline_count
         result["baseline_time"] = baseline_time
+        result["baseline_build_time"] = 0.0
+        result["baseline_bytes"] = (
+            baseline1["metrics"].get("bytes_scanned", self.n_rows * 8) +
+            baseline2["metrics"].get("bytes_scanned", self.n_rows * 8)
+        ) / 2
         result["selectivity"] = baseline_count / self.n_rows if self.n_rows > 0 else 0
         
         # Zone map: AND of both zone map results
@@ -523,7 +528,7 @@ class ExperimentRunner:
         
         self.results.append(result)
         return result
-    
+
     def run_aggregation_query(self, column: str, value, operator: str, 
                                agg_column: str, agg_func: str = "sum") -> dict:
         """Run aggregation-friendly query (filter then aggregate)."""
@@ -567,22 +572,76 @@ class ExperimentRunner:
         
         result["baseline_count"] = int(mask.sum())
         result["baseline_time"] = baseline_time
+        result["baseline_build_time"] = 0.0
+        result["baseline_bytes"] = baseline["metrics"].get("bytes_scanned", self.n_rows * 8)
         result["baseline_agg_result"] = float(agg_result) if agg_result is not None else None
         result["selectivity"] = int(mask.sum()) / self.n_rows if self.n_rows > 0 else 0
         
-        # RLE can compute count directly without decompression
+        # Zone map (for filtering)
+        try:
+            t0 = time.perf_counter()
+            zm_obj = ZoneMapSkipping(segs)
+            zm_result = zm_obj.zone_map_skipping(value, operator)
+            zm_mask = zm_result["bitset"]
+            
+            # Compute aggregation on filtered result
+            if agg_func == "sum":
+                zm_agg = np.sum(full_agg_data[zm_mask])
+            elif agg_func == "count":
+                zm_agg = int(zm_mask.sum())
+            elif agg_func == "avg":
+                zm_agg = np.mean(full_agg_data[zm_mask]) if zm_mask.sum() > 0 else 0
+            elif agg_func == "min":
+                zm_agg = np.min(full_agg_data[zm_mask]) if zm_mask.sum() > 0 else None
+            elif agg_func == "max":
+                zm_agg = np.max(full_agg_data[zm_mask]) if zm_mask.sum() > 0 else None
+            else:
+                zm_agg = None
+            
+            zm_time = time.perf_counter() - t0
+            result["zonemap_time"] = zm_time
+            result["zonemap_count"] = int(zm_mask.sum())
+            result["zonemap_agg_result"] = float(zm_agg) if zm_agg is not None else None
+        except Exception as e:
+            result["zonemap_error"] = str(e)
+        
+        # RLE (for count aggregation)
         if agg_func == "count":
             try:
                 t0 = time.perf_counter()
-                rle = RunLengthEncoding(segs)
-                rle_result = rle.direct_count(value)
+                rle_obj = RunLengthEncoding(segs)
+                rle_result = rle_obj.direct_count(value)
                 rle_time = time.perf_counter() - t0
                 
                 result["rle_agg_result"] = rle_result["total_count"]
                 result["rle_time"] = rle_time
+                result["rle_bytes"] = rle_result["metrics"].get("approx_compressed_bytes", 0)
                 result["rle_speedup"] = baseline_time / rle_time if rle_time > 0 else 0
             except Exception as e:
                 result["rle_error"] = str(e)
+        
+        # Dictionary (for all aggregations)
+        try:
+            t0 = time.perf_counter()
+            de_obj = DictionaryEncoding(segs, column)
+            de_result = de_obj.query_dictionary(value)
+            de_mask = np.zeros(self.n_rows, dtype=bool)
+            de_mask[np.array(de_result["matching_row_ids"])] = True
+            
+            if agg_func == "sum":
+                de_agg = np.sum(full_agg_data[de_mask])
+            elif agg_func == "count":
+                de_agg = int(de_mask.sum())
+            elif agg_func == "avg":
+                de_agg = np.mean(full_agg_data[de_mask]) if de_mask.sum() > 0 else 0
+            else:
+                de_agg = None
+            
+            de_time = time.perf_counter() - t0
+            result["dict_time"] = de_time
+            result["dict_agg_result"] = float(de_agg) if de_agg is not None else None
+        except Exception as e:
+            result["dict_error"] = str(e)
         
         self.results.append(result)
         return result
